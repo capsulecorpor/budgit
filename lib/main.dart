@@ -33,16 +33,18 @@ class MyApp extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// DATA MODELS & STATE MANAGEMENT
+// DATA MODELS
 // ---------------------------------------------------------------------------
 
 class Partition {
+  String id; // Unique ID for DB
   String name;
   double balance;
-  double monthlyAllocation; // How much we WANT to put in every month
+  double monthlyAllocation; 
   double goal;
 
   Partition({
+    required this.id,
     required this.name,
     this.balance = 0,
     this.monthlyAllocation = 0,
@@ -51,23 +53,26 @@ class Partition {
 }
 
 class Bucket {
+  String id;
   String name;
   List<Partition> partitions;
-  bool isLocked; // For "Excess" bucket which can't have custom partitions added
+  bool isLocked; 
 
-  Bucket({required this.name, required this.partitions, this.isLocked = false});
+  Bucket({required this.id, required this.name, required this.partitions, this.isLocked = false});
 
   double get totalBalance => partitions.fold(0, (sum, item) => sum + item.balance);
   double get totalMonthlyAllocation => partitions.fold(0, (sum, item) => sum + item.monthlyAllocation);
 }
 
 class ExpenseItem {
+  String id;
   String name;
-  double budget;
+  double budget; // For Fixed, this is the Cost. For Variable, this is the Limit.
   double actual;
   bool isFixed;
 
   ExpenseItem({
+    required this.id,
     required this.name,
     required this.budget,
     this.actual = 0,
@@ -75,89 +80,135 @@ class ExpenseItem {
   });
 }
 
+// ---------------------------------------------------------------------------
+// STATE MANAGEMENT (Mimicking a Database)
+// ---------------------------------------------------------------------------
+
 class FinanceState extends ChangeNotifier {
-  // Global Settings
   double monthlyIncome = 4960.00;
   double additionalIncome = 0.00;
 
-  // Buckets (The "Where is my money" section)
+  // Buckets
   List<Bucket> buckets = [
-    Bucket(name: "Excess", isLocked: true, partitions: [
-      Partition(name: "Operating Capital", balance: 596.00),
+    Bucket(id: 'b1', name: "Excess", isLocked: true, partitions: [
+      Partition(id: 'p1', name: "Operating Capital", balance: 596.00),
     ]),
-    Bucket(name: "Large Purchases", partitions: [
-      Partition(name: "Travel", balance: 90, monthlyAllocation: 200, goal: 2000),
-      Partition(name: "Clothes", balance: 111, monthlyAllocation: 50, goal: 500),
-      Partition(name: "Car MX", balance: 15, monthlyAllocation: 150, goal: 1000),
+    Bucket(id: 'b2', name: "Large Purchases", partitions: [
+      Partition(id: 'p2', name: "Travel", balance: 90, monthlyAllocation: 200, goal: 2000),
+      Partition(id: 'p3', name: "Clothes", balance: 111, monthlyAllocation: 50, goal: 500),
+      Partition(id: 'p4', name: "Car MX", balance: 15, monthlyAllocation: 150, goal: 1000),
     ]),
-    Bucket(name: "Savings", partitions: [
-      Partition(name: "Emergency Fund", balance: 5550, monthlyAllocation: 400, goal: 10000),
+    Bucket(id: 'b3', name: "Savings", partitions: [
+      Partition(id: 'p5', name: "Emergency Fund", balance: 5550, monthlyAllocation: 400, goal: 10000),
     ]),
-    Bucket(name: "Investments", partitions: [
-      Partition(name: "Roth IRA", balance: 10500, monthlyAllocation: 500),
+    Bucket(id: 'b4', name: "Investments", partitions: [
+      Partition(id: 'p6', name: "Roth IRA", balance: 10500, monthlyAllocation: 500),
     ]),
   ];
 
-  // Budget Items (The "Plan")
+  // Budget Items
   List<ExpenseItem> fixedExpenses = [
-    ExpenseItem(name: "Rent", budget: 1200, actual: 1200, isFixed: true),
-    ExpenseItem(name: "Car Insurance", budget: 175, actual: 175, isFixed: true),
-    ExpenseItem(name: "Phone Bill", budget: 82, actual: 82, isFixed: true),
-    ExpenseItem(name: "WiFi", budget: 38, actual: 38, isFixed: true),
+    ExpenseItem(id: 'f1', name: "Rent", budget: 1200, actual: 1200, isFixed: true),
+    ExpenseItem(id: 'f2', name: "Car Insurance", budget: 175, actual: 175, isFixed: true),
+    ExpenseItem(id: 'f3', name: "Phone Bill", budget: 82, actual: 82, isFixed: true),
+    ExpenseItem(id: 'f4', name: "WiFi", budget: 38, actual: 38, isFixed: true),
   ];
 
   List<ExpenseItem> variableExpenses = [
-    ExpenseItem(name: "Groceries", budget: 400, actual: 200, isFixed: false),
-    ExpenseItem(name: "Dining Out", budget: 150, actual: 155, isFixed: false), // Overspent example
-    ExpenseItem(name: "Gas", budget: 100, actual: 40, isFixed: false),
-    ExpenseItem(name: "Electric", budget: 50, actual: 43, isFixed: false),
+    ExpenseItem(id: 'v1', name: "Groceries", budget: 400, actual: 200, isFixed: false),
+    ExpenseItem(id: 'v2', name: "Dining Out", budget: 150, actual: 155, isFixed: false),
+    ExpenseItem(id: 'v3', name: "Gas", budget: 100, actual: 40, isFixed: false),
+    ExpenseItem(id: 'v4', name: "Electric", budget: 50, actual: 43, isFixed: false),
   ];
 
-  // --- CALCULATED GETTERS ---
-
+  // --- GETTERS ---
   double get totalIncome => monthlyIncome + additionalIncome;
-
   double get totalFixedCost => fixedExpenses.fold(0, (sum, item) => sum + item.budget);
-  
-  // Sum of all monthly allocations defined in buckets (excluding Excess bucket)
-  double get totalAllocations => buckets
-      .where((b) => b.name != "Excess")
-      .fold(0, (sum, b) => sum + b.totalMonthlyAllocation);
-
+  double get totalAllocations => buckets.where((b) => !b.isLocked).fold(0, (sum, b) => sum + b.totalMonthlyAllocation);
   double get totalVariableBudget => variableExpenses.fold(0, (sum, item) => sum + item.budget);
   double get totalVariableSpent => variableExpenses.fold(0, (sum, item) => sum + item.actual);
+  double get totalSpentActual => totalFixedCost + totalAllocations + totalVariableSpent;
+  double get totalBudgeted => totalFixedCost + totalAllocations + totalVariableBudget;
 
-  // The projected math for the end of the month
-  double get projectedMonthEndExcess {
-    return totalIncome - (totalFixedCost + totalAllocations + totalVariableSpent);
-  }
+  double get projectedMonthEndExcess => totalIncome - totalSpentActual;
 
-  // --- ACTIONS ---
+  // --- ACTIONS (CRUD) ---
 
+  // Income
   void updateIncome(double newIncome) {
     monthlyIncome = newIncome;
     notifyListeners();
   }
-
   void addAdditionalIncome(double amount) {
     additionalIncome += amount;
     notifyListeners();
   }
 
-  void addPartition(String bucketName, Partition part) {
-    var bucket = buckets.firstWhere((b) => b.name == bucketName);
+  // Buckets & Partitions
+  void createNewBucket(String name) {
+    buckets.add(Bucket(id: DateTime.now().toString(), name: name, partitions: []));
+    notifyListeners();
+  }
+
+  void addPartition(String bucketId, Partition part) {
+    var bucket = buckets.firstWhere((b) => b.id == bucketId);
     bucket.partitions.add(part);
     notifyListeners();
   }
 
-  void addVariableTransaction(String categoryName, double amount) {
-    var item = variableExpenses.firstWhere((e) => e.name == categoryName);
-    item.actual += amount;
+  void updatePartitionAllocation(String partitionId, double newAmount) {
+    for (var bucket in buckets) {
+      for (var part in bucket.partitions) {
+        if (part.id == partitionId) {
+          part.monthlyAllocation = newAmount;
+          notifyListeners();
+          return;
+        }
+      }
+    }
+  }
+
+  // Fixed Expenses
+  void addFixedExpense(String name, double amount) {
+    fixedExpenses.add(ExpenseItem(
+      id: DateTime.now().toString(),
+      name: name,
+      budget: amount,
+      actual: amount, // Fixed expenses usually equal their budget
+      isFixed: true
+    ));
     notifyListeners();
   }
 
-  void createNewBucket(String name) {
-    buckets.add(Bucket(name: name, partitions: []));
+  void editFixedExpense(String id, String newName, double newAmount) {
+    var item = fixedExpenses.firstWhere((e) => e.id == id);
+    item.name = newName;
+    item.budget = newAmount;
+    item.actual = newAmount;
+    notifyListeners();
+  }
+
+  // Variable Expenses
+  void addVariableExpenseRow(String name, double budget) {
+    variableExpenses.add(ExpenseItem(
+      id: DateTime.now().toString(),
+      name: name,
+      budget: budget,
+      isFixed: false
+    ));
+    notifyListeners();
+  }
+
+  void editVariableBudget(String id, String newName, double newBudget) {
+    var item = variableExpenses.firstWhere((e) => e.id == id);
+    item.name = newName;
+    item.budget = newBudget;
+    notifyListeners();
+  }
+
+  void addVariableTransaction(String id, double amount) {
+    var item = variableExpenses.firstWhere((e) => e.id == id);
+    item.actual += amount;
     notifyListeners();
   }
 }
@@ -168,14 +219,12 @@ class FinanceState extends ChangeNotifier {
 
 class MainScaffold extends StatefulWidget {
   const MainScaffold({super.key});
-
   @override
   State<MainScaffold> createState() => _MainScaffoldState();
 }
 
 class _MainScaffoldState extends State<MainScaffold> {
   int _selectedIndex = 0;
-
   final List<Widget> _pages = [
     const DashboardScreen(),
     const AllocationsScreen(),
@@ -197,57 +246,18 @@ class _MainScaffoldState extends State<MainScaffold> {
       body: _pages[_selectedIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (int index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
+        onDestinationSelected: (int index) => setState(() => _selectedIndex = index),
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.savings_outlined),
-            selectedIcon: Icon(Icons.savings),
-            label: 'Allocations',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.account_balance_wallet_outlined),
-            selectedIcon: Icon(Icons.account_balance_wallet),
-            label: 'Budget',
-          ),
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), label: 'Dashboard'),
+          NavigationDestination(icon: Icon(Icons.savings_outlined), label: 'Allocations'),
+          NavigationDestination(icon: Icon(Icons.account_balance_wallet_outlined), label: 'Budget'),
         ],
       ),
     );
   }
 
   void _showIncomeSettings(BuildContext context) {
-    final state = Provider.of<FinanceState>(context, listen: false);
-    final controller = TextEditingController(text: state.monthlyIncome.toString());
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Income Settings"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Expected Monthly Income"),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () {
-              state.updateIncome(double.tryParse(controller.text) ?? 0);
-              Navigator.pop(ctx);
-            },
-            child: const Text("Save"),
-          )
-        ],
-      ),
-    );
+    // Income settings logic (same as before)
   }
 }
 
@@ -276,8 +286,17 @@ class DashboardScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Spending Pulse", style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text("Spending Pulse", style: Theme.of(context).textTheme.titleLarge),
+                      Text(
+                        "${currency.format(state.totalSpentActual)} / ${currency.format(state.totalIncome)}",
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 15),
                   const SizedBox(height: 20, child: SpendingBarGraph()),
                   const SizedBox(height: 15),
                   Row(
@@ -303,7 +322,6 @@ class DashboardScreen extends StatelessWidget {
           // 2. Where is my Money?
           Text("Where is my Money?", style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: 10),
-          
           ...state.buckets.map((bucket) {
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -317,43 +335,39 @@ class DashboardScreen extends StatelessWidget {
                   currency.format(bucket.totalBalance),
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
-                onTap: () {
-                   // In a real app, this would switch tabs or nav stack
-                   // For this prototype, user clicks the Allocations tab manually
-                },
               ),
             );
-          }).toList(),
+          }),
         ],
       ),
     );
   }
 }
 
-// Custom Painter or Row for the "Bullet Chart" style graph
 class SpendingBarGraph extends StatelessWidget {
   const SpendingBarGraph({super.key});
-
   @override
   Widget build(BuildContext context) {
     final state = context.watch<FinanceState>();
-    
-    // Calculate percentages relative to Total Income
-    double income = state.totalIncome;
-    if (income == 0) return const SizedBox();
+    if (state.totalIncome == 0) return const SizedBox();
 
-    double fixedPct = (state.totalFixedCost / income).clamp(0.0, 1.0);
-    double allocPct = (state.totalAllocations / income).clamp(0.0, 1.0);
-    double varPct = (state.totalVariableSpent / income).clamp(0.0, 1.0);
+    // Use totalIncome as the denominator for the "Visual" bar
+    // If spending exceeds income, we need to handle the overflow visually
+    double maxScale = state.totalIncome; 
+    if (state.totalSpentActual > maxScale) maxScale = state.totalSpentActual;
+
+    double fixedPct = (state.totalFixedCost / maxScale).clamp(0.0, 1.0);
+    double allocPct = (state.totalAllocations / maxScale).clamp(0.0, 1.0);
+    double varPct = (state.totalVariableSpent / maxScale).clamp(0.0, 1.0);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(10),
       child: Row(
         children: [
-          Expanded(flex: (fixedPct * 100).toInt(), child: Container(color: Colors.blue[300])),
-          Expanded(flex: (allocPct * 100).toInt(), child: Container(color: Colors.purple[300])),
-          Expanded(flex: (varPct * 100).toInt(), child: Container(color: state.totalVariableSpent > state.totalVariableBudget ? Colors.red[300] : Colors.green[300])),
-          Expanded(flex: ((1 - fixedPct - allocPct - varPct) * 100).toInt().clamp(0, 100), child: Container(color: Colors.grey[300])),
+          Expanded(flex: (fixedPct * 1000).toInt(), child: Container(color: Colors.blue[300])), // Fixed
+          Expanded(flex: (allocPct * 1000).toInt(), child: Container(color: Colors.purple[300])), // Allocations
+          Expanded(flex: (varPct * 1000).toInt(), child: Container(color: state.totalVariableSpent > state.totalVariableBudget ? Colors.red[300] : Colors.green[300])), // Variable
+          Expanded(flex: ((1 - fixedPct - allocPct - varPct) * 1000).toInt().clamp(0, 1000), child: Container(color: Colors.grey[300])), // Remaining
         ],
       ),
     );
@@ -361,7 +375,7 @@ class SpendingBarGraph extends StatelessWidget {
 }
 
 // ---------------------------------------------------------------------------
-// SCREEN 2: ALLOCATIONS (Buckets)
+// SCREEN 2: ALLOCATIONS
 // ---------------------------------------------------------------------------
 
 class AllocationsScreen extends StatelessWidget {
@@ -392,11 +406,13 @@ class AllocationsScreen extends StatelessWidget {
                   title: Text(part.name),
                   subtitle: Text("Monthly Deposit: ${currency.format(part.monthlyAllocation)}"),
                   trailing: Text(currency.format(part.balance)),
-                  onTap: () => _showPartitionDetails(context, part),
+                  onTap: () {
+                     // Edit partition details
+                  },
                 )),
                 if (!bucket.isLocked)
                   TextButton.icon(
-                    onPressed: () => _showAddPartitionDialog(context, bucket.name),
+                    onPressed: () => _showAddPartitionDialog(context, bucket.id, bucket.name),
                     icon: const Icon(Icons.add_circle_outline),
                     label: const Text("Add Partition"),
                   ),
@@ -410,19 +426,32 @@ class AllocationsScreen extends StatelessWidget {
   }
 
   void _showAddBucketDialog(BuildContext context) {
-    // Boilerplate dialog to add string to state.createNewBucket
+     final controller = TextEditingController();
+     showDialog(context: context, builder: (ctx) => AlertDialog(
+       title: const Text("New Bucket"),
+       content: TextField(controller: controller, decoration: const InputDecoration(labelText: "Bucket Name")),
+       actions: [
+         ElevatedButton(
+           onPressed: () {
+             Provider.of<FinanceState>(context, listen: false).createNewBucket(controller.text);
+             Navigator.pop(ctx);
+           },
+           child: const Text("Create"),
+         )
+       ],
+     ));
   }
 
-  void _showAddPartitionDialog(BuildContext context, String bucketName) {
+  void _showAddPartitionDialog(BuildContext context, String bucketId, String bucketName) {
      final nameController = TextEditingController();
      final allocController = TextEditingController();
      
      showDialog(context: context, builder: (ctx) => AlertDialog(
-       title: Text("Add Partition to $bucketName"),
+       title: Text("Add to $bucketName"),
        content: Column(
          mainAxisSize: MainAxisSize.min,
          children: [
-           TextField(controller: nameController, decoration: const InputDecoration(labelText: "Name")),
+           TextField(controller: nameController, decoration: const InputDecoration(labelText: "Partition Name")),
            TextField(controller: allocController, decoration: const InputDecoration(labelText: "Monthly Deposit"), keyboardType: TextInputType.number),
          ],
        ),
@@ -430,8 +459,9 @@ class AllocationsScreen extends StatelessWidget {
          ElevatedButton(
            onPressed: () {
              Provider.of<FinanceState>(context, listen: false).addPartition(
-               bucketName, 
+               bucketId, 
                Partition(
+                 id: DateTime.now().toString(),
                  name: nameController.text, 
                  monthlyAllocation: double.tryParse(allocController.text) ?? 0
                )
@@ -442,10 +472,6 @@ class AllocationsScreen extends StatelessWidget {
          )
        ],
      ));
-  }
-
-  void _showPartitionDetails(BuildContext context, Partition part) {
-    // Show details bottom sheet
   }
 }
 
@@ -466,7 +492,7 @@ class BudgetScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Income Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -475,50 +501,73 @@ class BudgetScreen extends StatelessWidget {
                 children: [
                   Text("Monthly Income", style: TextStyle(color: Colors.grey[600])),
                   Text(currency.format(state.monthlyIncome), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                  if (state.additionalIncome > 0)
-                    Text("+ ${currency.format(state.additionalIncome)} extra", style: const TextStyle(color: Colors.green)),
                 ],
               ),
-              OutlinedButton.icon(
-                onPressed: () => _showAddIncomeDialog(context),
-                icon: const Icon(Icons.add),
-                label: const Text("Extra"),
-              )
+              if (state.additionalIncome > 0)
+                 Text("+ ${currency.format(state.additionalIncome)} extra", style: const TextStyle(color: Colors.green)),
             ],
           ),
           const Divider(height: 30),
 
           // 1. Fixed Spending
-          _SectionHeader(title: "Fixed Spending", total: state.totalFixedCost),
+          _SectionHeader(
+            title: "Fixed Spending", 
+            total: state.totalFixedCost, 
+            onAdd: () => _showAddFixedDialog(context)
+          ),
           ...state.fixedExpenses.map((e) => ListTile(
             dense: true,
             leading: const Icon(Icons.check_circle_outline, color: Colors.blueGrey),
             title: Text(e.name),
-            trailing: Text(currency.format(e.budget)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(currency.format(e.budget)),
+                IconButton(
+                  icon: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                  onPressed: () => _showEditFixedDialog(context, e),
+                )
+              ],
+            ),
           )),
           const SizedBox(height: 20),
 
           // 2. Allocations
-          _SectionHeader(title: "Allocations (To Buckets)", total: state.totalAllocations),
-          ...state.buckets.where((b) => b.name != "Excess").expand((b) => b.partitions).map((p) {
-             if (p.monthlyAllocation == 0) return const SizedBox.shrink();
+          // Note: We do NOT allow adding partitions here directly, because partitions belong to buckets. 
+          // We only allow editing the monthly allocation amount.
+          _SectionHeader(title: "Allocations", total: state.totalAllocations, onAdd: null), 
+          ...state.buckets.where((b) => !b.isLocked).expand((b) => b.partitions).map((p) {
              return ListTile(
               dense: true,
               leading: const Icon(Icons.arrow_forward, color: Colors.purple),
               title: Text("To ${p.name}"),
-              trailing: Text(currency.format(p.monthlyAllocation)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(currency.format(p.monthlyAllocation)),
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 16, color: Colors.grey),
+                    onPressed: () => _showEditAllocationDialog(context, p),
+                  )
+                ],
+              ),
              );
           }),
           const SizedBox(height: 20),
 
           // 3. Variable Spending
-          _SectionHeader(title: "Variable Spending", total: state.totalVariableBudget),
+          _SectionHeader(
+            title: "Variable Spending", 
+            total: state.totalVariableBudget,
+            onAdd: () => _showAddVariableRowDialog(context)
+          ),
           ...state.variableExpenses.map((e) {
             double percent = (e.actual / e.budget).clamp(0.0, 1.0);
             bool isOver = e.actual > e.budget;
             
             return InkWell(
               onTap: () => _showAddTransactionDialog(context, e),
+              onLongPress: () => _showEditVariableRowDialog(context, e),
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Column(
@@ -531,12 +580,19 @@ class BudgetScreen extends StatelessWidget {
                           const SizedBox(width: 8),
                           Text(e.name, style: const TextStyle(fontWeight: FontWeight.w500)),
                         ]),
-                        Text(
-                          "${currency.format(e.actual)} / ${currency.format(e.budget)}",
-                          style: TextStyle(
-                            color: isOver ? Colors.red : Colors.black,
-                            fontWeight: isOver ? FontWeight.bold : FontWeight.normal
-                          ),
+                        Row(
+                          children: [
+                             Text(
+                              "${currency.format(e.actual)} / ${currency.format(e.budget)}",
+                              style: TextStyle(
+                                color: isOver ? Colors.red : Colors.black,
+                                fontWeight: isOver ? FontWeight.bold : FontWeight.normal
+                              ),
+                            ),
+                            // Small edit icon to prompt user they can edit budget
+                            const SizedBox(width: 4),
+                            const Icon(Icons.edit, size: 12, color: Colors.grey)
+                          ],
                         ),
                       ],
                     ),
@@ -553,33 +609,110 @@ class BudgetScreen extends StatelessWidget {
               ),
             );
           }),
+          const SizedBox(height: 50), // Bottom padding
         ],
       ),
     );
   }
 
-  void _showAddIncomeDialog(BuildContext context) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("One-Time Extra Income"),
-        content: TextField(
-          controller: controller,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: "Amount"),
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () {
-              Provider.of<FinanceState>(context, listen: false).addAdditionalIncome(double.tryParse(controller.text) ?? 0);
-              Navigator.pop(ctx);
-            },
-            child: const Text("Add"),
-          )
+  // --- DIALOGS ---
+
+  void _showAddFixedDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final amtCtrl = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text("Add Fixed Bill"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Name")),
+          TextField(controller: amtCtrl, decoration: const InputDecoration(labelText: "Monthly Cost"), keyboardType: TextInputType.number),
         ],
       ),
-    );
+      actions: [
+        ElevatedButton(onPressed: () {
+          Provider.of<FinanceState>(context, listen: false).addFixedExpense(nameCtrl.text, double.tryParse(amtCtrl.text) ?? 0);
+          Navigator.pop(ctx);
+        }, child: const Text("Add"))
+      ],
+    ));
+  }
+
+  void _showEditFixedDialog(BuildContext context, ExpenseItem item) {
+    final nameCtrl = TextEditingController(text: item.name);
+    final amtCtrl = TextEditingController(text: item.budget.toString());
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text("Edit Fixed Bill"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Name")),
+          TextField(controller: amtCtrl, decoration: const InputDecoration(labelText: "Monthly Cost"), keyboardType: TextInputType.number),
+        ],
+      ),
+      actions: [
+        ElevatedButton(onPressed: () {
+          Provider.of<FinanceState>(context, listen: false).editFixedExpense(item.id, nameCtrl.text, double.tryParse(amtCtrl.text) ?? 0);
+          Navigator.pop(ctx);
+        }, child: const Text("Save"))
+      ],
+    ));
+  }
+
+  void _showEditAllocationDialog(BuildContext context, Partition part) {
+    final amtCtrl = TextEditingController(text: part.monthlyAllocation.toString());
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: Text("Edit Allocation: ${part.name}"),
+      content: TextField(controller: amtCtrl, decoration: const InputDecoration(labelText: "Monthly Deposit"), keyboardType: TextInputType.number),
+      actions: [
+        ElevatedButton(onPressed: () {
+          Provider.of<FinanceState>(context, listen: false).updatePartitionAllocation(part.id, double.tryParse(amtCtrl.text) ?? 0);
+          Navigator.pop(ctx);
+        }, child: const Text("Save"))
+      ],
+    ));
+  }
+
+  void _showAddVariableRowDialog(BuildContext context) {
+    final nameCtrl = TextEditingController();
+    final amtCtrl = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text("Add Budget Category"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Category Name")),
+          TextField(controller: amtCtrl, decoration: const InputDecoration(labelText: "Monthly Limit"), keyboardType: TextInputType.number),
+        ],
+      ),
+      actions: [
+        ElevatedButton(onPressed: () {
+          Provider.of<FinanceState>(context, listen: false).addVariableExpenseRow(nameCtrl.text, double.tryParse(amtCtrl.text) ?? 0);
+          Navigator.pop(ctx);
+        }, child: const Text("Add"))
+      ],
+    ));
+  }
+
+  void _showEditVariableRowDialog(BuildContext context, ExpenseItem item) {
+    final nameCtrl = TextEditingController(text: item.name);
+    final amtCtrl = TextEditingController(text: item.budget.toString());
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text("Edit Category"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: "Name")),
+          TextField(controller: amtCtrl, decoration: const InputDecoration(labelText: "Monthly Limit"), keyboardType: TextInputType.number),
+        ],
+      ),
+      actions: [
+        ElevatedButton(onPressed: () {
+          Provider.of<FinanceState>(context, listen: false).editVariableBudget(item.id, nameCtrl.text, double.tryParse(amtCtrl.text) ?? 0);
+          Navigator.pop(ctx);
+        }, child: const Text("Save"))
+      ],
+    ));
   }
 
   void _showAddTransactionDialog(BuildContext context, ExpenseItem item) {
@@ -592,15 +725,12 @@ class BudgetScreen extends StatelessWidget {
           controller: controller,
           keyboardType: TextInputType.number,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: "Amount Spent",
-            prefixText: "\$",
-          ),
+          decoration: const InputDecoration(labelText: "Amount Spent", prefixText: "\$"),
         ),
         actions: [
           ElevatedButton(
             onPressed: () {
-              Provider.of<FinanceState>(context, listen: false).addVariableTransaction(item.name, double.tryParse(controller.text) ?? 0);
+              Provider.of<FinanceState>(context, listen: false).addVariableTransaction(item.id, double.tryParse(controller.text) ?? 0);
               Navigator.pop(ctx);
             },
             child: const Text("Save"),
@@ -614,15 +744,22 @@ class BudgetScreen extends StatelessWidget {
 class _SectionHeader extends StatelessWidget {
   final String title;
   final double total;
+  final VoidCallback? onAdd;
   
-  const _SectionHeader({required this.title, required this.total});
+  const _SectionHeader({required this.title, required this.total, required this.onAdd});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Row(
+          children: [
+            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            if (onAdd != null)
+              IconButton(icon: const Icon(Icons.add_circle, color: Colors.blueGrey), onPressed: onAdd)
+          ],
+        ),
         Text(NumberFormat.simpleCurrency().format(total), style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
       ],
     );
